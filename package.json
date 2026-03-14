@@ -1,0 +1,22 @@
+{
+  "name": "tinfoil-proxy",
+  "version": "1.0.0",
+  "description": "E2E encrypted AI proxy using Tinfoil SDK via ppq.ai",
+  "main": "index.ts",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "tinfoil": "^1.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
