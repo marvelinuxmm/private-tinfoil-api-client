@@ -337,7 +337,7 @@ async function main() {
       if (verbose) console.log("\n[VERBOSE] Encrypting and sending request...");
 
       const completion = await client.chat.completions.create({
-        model: model,
+        model,
         messages: messages,
         temperature: 1,
         max_tokens: 10000,
@@ -345,7 +345,7 @@ async function main() {
 
       const message = completion.choices?.[0]?.message;
       const reply = message?.content ?? null;
-      const reasoning = (message as any)?.reasoning ?? null;
+      const reasoning = (message as unknown as Record<string, unknown> | undefined)?.reasoning as string | null ?? null;
 
       const fullResponseText = [reasoning, reply].filter(Boolean).join("\n\n");
 
