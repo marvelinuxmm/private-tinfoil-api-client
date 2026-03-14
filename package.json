@@ -1,7 +1,7 @@
 {
   "name": "tinfoil-proxy",
   "version": "1.0.0",
-  "description": "E2E encrypted AI proxy using Tinfoil SDK via ppq.ai",
+  "description": "E2E encrypted AI chat using the Tinfoil SDK",
   "main": "index.ts",
   "scripts": {
     "start": "tsx index.ts"

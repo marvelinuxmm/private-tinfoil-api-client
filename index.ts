@@ -1,13 +1,13 @@
 import "dotenv/config";
-import { SecureClient } from "tinfoil";
+import { TinfoilAI } from "tinfoil";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import * as readline from "readline/promises";
 
 // ── Config from .env ──────────────────────────────────────────────
-const apiKey = process.env.PPQ_API_KEY;
-const model = process.env.MODEL || "private/kimi-k2-5";
+const apiKey = process.env.TINFOIL_API_KEY;
+const model = process.env.MODEL || "kimi-k2-5";
 let chatLogsEnabled = process.env.CHAT_LOGS?.toLowerCase() === "true";
 let logPassword = process.env.LOG_PASSWORD || "";
 const verbose = process.env.VERBOSE?.toLowerCase() === "true";
@@ -16,20 +16,16 @@ function log(...args: unknown[]): void {
   if (verbose) console.log("[VERBOSE]", ...args);
 }
 
-if (!apiKey || apiKey === "paste-your-ppq-api-key-here") {
+if (!apiKey || apiKey === "paste-your-tinfoil-api-key-here") {
   console.error(
     "\n❌  Missing API key!\n" +
-    "    Open the .env file and replace the placeholder with your ppq.ai API key.\n" +
-    '    It should look like: PPQ_API_KEY=sk-...\n'
+    "    Open the .env file and replace the placeholder with your Tinfoil API key.\n" +
+    '    It should look like: TINFOIL_API_KEY=...\n'
   );
   process.exit(1);
 }
 
-// ── Model ID mapping ─────────────────────────────────────────────
-// ppq.ai uses "private/..." externally but the enclave expects the raw name
-const enclaveModel = model.startsWith("private/") ? model.slice(8) : model;
-
-if (!enclaveModel || enclaveModel.trim() === "") {
+if (!model || model.trim() === "") {
   console.error(`\n❌  Invalid model specified: "${model}"\n`);
   process.exit(1);
 }
@@ -141,8 +137,7 @@ function dumpError(error: unknown, depth = 0): void {
 }
 
 // ── Summarize history ─────────────────────────────────────────────
-const SUMMARY_MODEL = process.env.SUMMARY_MODEL || "private/llama3-3-70b";
-const summaryEnclaveModel = SUMMARY_MODEL.startsWith("private/") ? SUMMARY_MODEL.slice("private/".length) : SUMMARY_MODEL;
+const SUMMARY_MODEL = process.env.SUMMARY_MODEL || "llama3-3-70b";
 const summarySystemPrompt =
   process.env.SUMMARY_SYSTEM_PROMPT ||
   "You are a summarization assistant. Produce a concise but complete summary of the conversation below, preserving all important facts, decisions, and context. Write in third person.";
@@ -181,31 +176,13 @@ async function summarizeHistory(
 
   console.log(`\n⏳  Summarizing ${toSummarize.length} older messages via ${SUMMARY_MODEL}...`);
 
-  const endpoint = `${API_BASE}/private/v1/chat/completions`;
-  const body = JSON.stringify({
-    model: summaryEnclaveModel,
+  const completion = await client.chat.completions.create({
+    model: SUMMARY_MODEL,
     messages: summaryRequest,
     temperature: 0.3,
     max_tokens: 2000,
   });
 
-  const response = await client.fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "X-Private-Model": SUMMARY_MODEL,
-      "x-query-source": "api",
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errText}`);
-  }
-
-  const completion = await response.json();
   const summary = completion.choices?.[0]?.message?.content ?? null;
 
   if (!summary) throw new Error("No summary content received from model.");
@@ -221,38 +198,23 @@ async function summarizeHistory(
   };
 }
 
-// ── Create the SecureClient ───────────────────────────────────────
-// ZERO-TRUST CONFIGURATION:
-//   - enclaveURL: The actual hardware enclave we encrypt for. The SDK will
-//     fetch the HPKE public key and attestation report DIRECTLY from this URL.
-//     ppq.ai is completely cut out of the security handshake.
-//   - baseURL: The proxy (ppq.ai). The SDK sends the fully encrypted payload
-//     here. ppq.ai forwards it to the enclave, but cannot read or tamper
-//     with the encryption keys.
-const API_BASE = "https://api.ppq.ai";
-const ENCLAVE = "https://router.inf6.tinfoil.sh";
+// ── Create the TinfoilAI client ───────────────────────────────────
+log("Initializing TinfoilAI client...");
+log(`  model:   ${model}`);
 
-log("Initializing SecureClient...");
-log(`  baseURL:              ${API_BASE}/private/`);
-log(`  enclaveURL:           ${ENCLAVE}`);
-log(`  model:                ${model} → enclave: ${enclaveModel}`);
-
-const client = new SecureClient({
-  baseURL: `${API_BASE}/private/`,
-  enclaveURL: ENCLAVE,
-  transport: "ehbp",
+const client = new TinfoilAI({
+  apiKey,
 });
 
-log("SecureClient created, performing attestation...");
+log("TinfoilAI client created, performing attestation...");
 
 const systemPrompt = process.env.SYSTEM_PROMPT || "You are a helpful, concise assistant. Keep responses under 100 words.";
 
 // ── Interactive Chat Loop ─────────────────────────────────────────
 
 async function main() {
-  console.log("🔒  Tinfoil E2E Encrypted Proxy");
+  console.log("🔒  Tinfoil E2E Encrypted Chat");
   console.log(`   Model:       ${model}`);
-  console.log("   Proxy:       ppq.ai");
   console.log("   Encryption:  EHBP (HPKE RFC 9180)");
   console.log("   Attestation: Hardware (AMD SEV-SNP)");
   console.log(`   Chat logs:   ${chatLogsEnabled ? "ON → ./logs/" : "OFF"}`);
@@ -374,35 +336,16 @@ async function main() {
     try {
       if (verbose) console.log("\n[VERBOSE] Encrypting and sending request...");
 
-      const endpoint = `${API_BASE}/private/v1/chat/completions`;
-      const body = JSON.stringify({
-        model: enclaveModel,
+      const completion = await client.chat.completions.create({
+        model,
         messages: messages,
         temperature: 1,
         max_tokens: 10000,
       });
 
-      const response = await client.fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "X-Private-Model": model,
-          "x-query-source": "api",
-        },
-        body: body,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errText}`);
-      }
-
-      const completion = await response.json();
-
       const message = completion.choices?.[0]?.message;
       const reply = message?.content ?? null;
-      const reasoning = message?.reasoning ?? null;
+      const reasoning = (message as unknown as Record<string, unknown> | undefined)?.reasoning as string | null ?? null;
 
       const fullResponseText = [reasoning, reply].filter(Boolean).join("\n\n");
 

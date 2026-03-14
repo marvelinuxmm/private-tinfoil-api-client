@@ -1,8 +1,8 @@
-# Tinfoil E2E Encrypted Proxy — Walkthrough
+# Tinfoil E2E Encrypted Chat — Walkthrough
 
 ## What Was Built
 
-A ready-to-run Node.js TypeScript project at `~/.gemini/tinfoil-proxy/` that sends **end-to-end encrypted** AI requests through ppq.ai using the Tinfoil SDK.
+A ready-to-run Node.js TypeScript CLI chat that sends **end-to-end encrypted** AI requests directly to the Tinfoil API using the Tinfoil SDK.
 
 ### Project Structure
 
@@ -20,19 +20,15 @@ tinfoil-proxy/
 ```mermaid
 sequenceDiagram
     participant You as Your Machine
-    participant SDK as Tinfoil SDK
-    participant PPQ as ppq.ai (Proxy)
-    participant Enclave as Secure Enclave (DeepSeek)
+    participant SDK as Tinfoil SDK (TinfoilAI)
+    participant Enclave as Secure Enclave
 
     You->>SDK: Chat prompt (plaintext)
     SDK->>SDK: Verify enclave attestation (AMD SEV-SNP)
     SDK->>SDK: Encrypt prompt with HPKE (RFC 9180)
-    SDK->>PPQ: Encrypted request + Bearer API key
-    Note over PPQ: Can see headers for billing<br/>CANNOT read encrypted body
-    PPQ->>Enclave: Forwards encrypted payload
+    SDK->>Enclave: Encrypted request + Bearer API key
     Enclave->>Enclave: Decrypts & processes prompt
-    Enclave->>PPQ: Encrypted response
-    PPQ->>SDK: Forwards encrypted response
+    Enclave->>SDK: Encrypted response
     SDK->>SDK: Decrypts response locally
     SDK->>You: Plaintext AI response
 ```
@@ -44,14 +40,14 @@ sequenceDiagram
 Open `.env` to configure your environment:
 
 **Required**
-- `PPQ_API_KEY`: Your ppq.ai API key
+- `TINFOIL_API_KEY`: Your Tinfoil API key
 
 **Main chat**
-- `MODEL`: TEE private model to use, default `private/kimi-k2-5`
+- `MODEL`: Model to use, default `kimi-k2-5`
 - `SYSTEM_PROMPT`: Instructions for the AI persona
 
 **`/summarize` command**
-- `SUMMARY_MODEL`: Model used for summarization, default `private/llama3-3-70b`
+- `SUMMARY_MODEL`: Model used for summarization, default `llama3-3-70b`
 - `SUMMARY_SYSTEM_PROMPT`: System prompt given to the summarizer (optional override)
 
 **Logging**
@@ -81,7 +77,7 @@ That's it! The script will verify the secure AMD enclave, prompt you for an encr
 
 Long conversations accumulate context and cost more tokens per request. Type `/summarize` at any point to compress older history:
 
-1. The app sends all messages **except the last 5 user + 5 assistant exchanges** to `SUMMARY_MODEL` (default `private/llama3-3-70b`) via the same EHBP-encrypted path — ppq.ai never sees the plaintext
+1. The app sends all messages **except the last 5 user + 5 assistant exchanges** to `SUMMARY_MODEL` (default `llama3-3-70b`) via the same EHBP-encrypted path
 2. The generated summary is shown as a **preview**
 3. You choose `y` to apply or `N` to cancel — history is only replaced on explicit confirmation
 4. On apply, the condensed history is immediately written to your encrypted log (if `CHAT_LOGS=true`)
@@ -89,7 +85,7 @@ Long conversations accumulate context and cost more tokens per request. Type `/s
 ```
 You: /summarize
 
-⏳  Summarizing 24 older messages via private/llama3-3-70b...
+⏳  Summarizing 24 older messages via llama3-3-70b...
 
 📝  Summary preview:
 
@@ -127,4 +123,4 @@ This will scan the `./logs/` directory, skip any files that are already encrypte
 - ✅ End-to-End HPKE Encryption verified
 - ✅ AMD SEV-SNP Hardware Attestation cryptographically verified locally
 - ✅ AES-256-GCM Local Log Encryption verified
-- ⏳ Live execution requires a valid `PPQ_API_KEY`
+- ⏳ Live execution requires a valid `TINFOIL_API_KEY`
